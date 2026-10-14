@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FL Studio Music Toolkit — Chord & MIDI Generator</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#f4f4f5;background:#111318}
+*{box-sizing:border-box}body{margin:0;padding:24px;max-width:960px;margin-inline:auto}
+header{margin-bottom:22px}h1{font-size:clamp(1.6rem,4vw,2.4rem);margin:0 0 8px}p{color:#b8bbc5;line-height:1.7}
+.panel{background:#1b1e26;border:1px solid #333744;border-radius:16px;padding:18px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+label{display:block;font-weight:650;margin-bottom:7px}select,input{width:100%;padding:11px;border-radius:9px;background:#111318;color:#f4f4f5;border:1px solid #484d5b;font:inherit}
+button{border:0;border-radius:10px;padding:12px 16px;background:#f59e0b;color:#171717;font-weight:750;font:inherit;cursor:pointer;margin:6px 4px 0 0}
+button.secondary{background:#303542;color:#f4f4f5;border:1px solid #484d5b}
+.progression{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.chord{background:#111318;border:1px solid #484d5b;border-radius:12px;padding:12px;text-align:center;min-height:90px}
+.chord strong{font-size:1.25rem;display:block;margin-bottom:6px}.notes{color:#c8cad2;font-size:.9rem;direction:ltr}
+.small{font-size:.9rem;color:#b8bbc5}.status{margin-top:12px;color:#a7f3d0;min-height:1.5em}
+footer{font-size:.85rem;color:#8d92a1;margin-top:24px}
+@media(max-width:520px){body{padding:14px}.progression{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎹 FL Studio Music Toolkit</h1>
+  <p>نسخة تجريبية أولى: اختر السلم والكوردات، شاهد النوتات بالأسماء، ثم نزّل ملف MIDI واستورده إلى FL Studio.</p>
+</header>
+<section class="panel">
+  <div class="grid">
+    <div><label for="key">النوتة الأساسية (Root)</label><select id="key">
+      <option value="0">C</option><option value="1">C#</option>
+      <option value="2">D</option><option value="3">D#</option>
+      <option value="4">E</option><option value="5">F</option>
+      <option value="6" selected>F#</option><option value="7">G</option>
+      <option value="8">G#</option><option value="9">A</option>
+      <option value="10">A#</option><option value="11">B</option></select></div>
+    <div><label for="mode">نوع السلم</label><select id="mode"><option value="minor" selected>Minor (عاطفي)</option><option value="major">Major (مشرق)</option></select></div>
+    <div><label for="bpm">Tempo (BPM)</label><input id="bpm" type="number" min="40" max="240" value="124"></div>
+    <div><label for="bars">طول كل كورد</label><select id="bars"><option value="1">1 Bar</option><option value="2" selected>2 Bars</option><option value="4">4 Bars</option></select></div>
+  </div>
+  <p class="small">اختر 4 كوردات بالترتيب. يمكنك تعديل كل خانة قبل تصدير MIDI.</p>
+  <div class="grid">
+    <div><label for="c1">الكورد 1</label><select id="c1"></select></div>
+    <div><label for="c2">الكورد 2</label><select id="c2"></select></div>
+    <div><label for="c3">الكورد 3</label><select id="c3"></select></div>
+    <div><label for="c4">الكورد 4</label><select id="c4"></select></div>
+  </div>
+  <button id="suggest">اقترح Progression</button>
+  <button id="export">تنزيل MIDI</button>
+  <button id="refresh" class="secondary">تحديث عرض الكوردات</button>
+  <div class="status" id="status" role="status"></div>
+</section>
+<section class="panel">
+  <h2>الكوردات والنوتات</h2>
+  <div id="preview" class="progression"></div>
+  <p class="small">التصدير الحالي ينشئ MIDI متعدد التراكات، كورد واحد في كل تراک، مع مدة الكورد حسب عدد الـBars المختار.</p>
+</section>
+<section class="panel">
+  <h2>طريقة الاستخدام في FL Studio</h2>
+  <ol>
+    <li>اضغط «تنزيل MIDI» واحفظ الملف.</li>
+    <li>اسحب ملف MIDI إلى Playlist في FL Studio، أو استخدم File → Import → MIDI file حسب إصدارك.</li>
+    <li>اختر الآلات الصوتية وعدّل الـVoicing والـVelocity حسب إحساس الأغنية.</li>
+  </ol>
+</section>
+<footer>نسخة MVP محلية تعمل في المتصفح ولا ترسل بياناتك إلى أي خادم. تحقّق من النوتات والنتيجة داخل FL Studio قبل اعتمادها.</footer>
+<script>
+const names=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const major=[0,2,4,5,7,9,11], minor=[0,2,3,5,7,8,10];
+const majorQual=['','m','m','','','m','dim'];
+const minorQual=['m','dim','','m','m','',''];
+const keyEl=document.getElementById('key'), modeEl=document.getElementById('mode');
+const selects=[1,2,3,4].map(n=>document.getElementById('c'+n));
+function root(){return Number(keyEl.value)}
+function scale(){return (modeEl.value==='major'?major:minor).map(n=>(root()+n)%12)}
+function chordInfo(degree){
+ const sc=scale(), r=sc[degree%7], q=(modeEl.value==='major'?majorQual:minorQual)[degree%7];
+ let intervals;
+ if(q==='dim') intervals=[0,3,6]; else if(q==='m') intervals=[0,3,7]; else intervals=[0,4,7];
+ return {degree,root:r,label:names[r]+q,notes:intervals.map(i=>names[(r+i)%12]),midi:intervals.map(i=>60+((r+i)%12))};
+}
+function fillOptions(){
+ const sc=scale(); const quals=modeEl.value==='major'?majorQual:minorQual;
+ selects.forEach(sel=>{
+  const old=sel.value; sel.innerHTML='';
+  sc.forEach((r,i)=>{
+   const q=quals[i], label=names[r]+q;
+   const opt=document.createElement('option');opt.value=i;opt.textContent=(i+1)+'. '+label;sel.appendChild(opt);
+  });
+  if(old!==''&&Number(old)<7)sel.value=old;
+ });
+ const defaults=modeEl.value==='major'?[0,4,5,3]:[0,5,2,6];
+ selects.forEach((s,i)=>s.value=defaults[i]);
+ render();
+}
+function render(){
+ const wrap=document.getElementById('preview');wrap.innerHTML='';
+ selects.forEach(sel=>{
+  const d=chordInfo(Number(sel.value));const card=document.createElement('div');card.className='chord';
+  card.innerHTML='<strong>'+d.label+'</strong><div class="notes">'+d.notes.join(' – ')+'</div><div class="small">Degree '+(d.degree+1)+'</div>';wrap.appendChild(card);
+ });
+}
+function u32(n){return [n>>>24&255,n>>>16&255,n>>>8&255,n&255]}
+function u16(n){return [n>>>8&255,n&255]}
+function vlq(n){let b=[n&127];while((n>>=7)){b.unshift((n&127)|128)}return b}
+function chunk(id,data){return [...id.split('').map(c=>c.charCodeAt(0)),...u32(data.length),...data]}
+function ascii(s){return [...s].map(c=>c.charCodeAt(0))}
+function makeMidi(){
+ const bpm=Math.max(40,Math.min(240,Number(document.getElementById('bpm').value)||124));
+ const bars=Number(document.getElementById('bars').value), ticks=480, duration=bars*4*ticks;
+ const tempo=Math.round(60000000/bpm);
+ const header=chunk('MThd',[...u16(1),...u16(4),...u16(ticks)]);
+ const tracks=[];
+ // Tempo track
+ tracks.push(chunk('MTrk',[0,255,81,3,(tempo>>16)&255,(tempo>>8)&255,tempo&255,0,255,47,0]));
+ selects.forEach((sel,idx)=>{
+  const d=chordInfo(Number(sel.value)), channel=idx;
+  let ev=[{t:0,order:0,data:[255,3,...vlq(ascii('Chord '+(idx+1)+' '+d.label).length),...ascii('Chord '+(idx+1)+' '+d.label)]}];
+  d.midi.forEach(note=>{ev.push({t:0,order:1,data:[0x90|channel,note,88]});ev.push({t:duration,order:0,data:[0x80|channel,note,0]})});
+  ev.sort((a,b)=>a.t-b.t||a.order-b.order);
+  let bytes=[],last=0;for(const e of ev){bytes.push(...vlq(e.t-last),...e.data);last=e.t}
+  bytes.push(0,255,47,0);tracks.push(chunk('MTrk',bytes));
+ });
+ const all=[...header,...tracks.flat()];
+ return new Blob([new Uint8Array(all)],{type:'audio/midi'});
+}
+document.getElementById('suggest').onclick=()=>{
+ const presets=modeEl.value==='major'?[[0,4,5,3],[0,5,3,4],[0,3,4,0]]:[[0,5,2,6],[0,6,5,6],[5,3,0,4]];
+ const p=presets[Math.floor(Math.random()*presets.length)];
+ selects.forEach((s,i)=>s.value=p[i]);render();
+};
+document.getElementById('export').onclick=()=>{
+ const blob=makeMidi(),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='music-toolkit-chords.mid';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+ document.getElementById('status').textContent='تم إنشاء ملف MIDI. افتحه أو اسحبه إلى FL Studio.';
+};
+document.getElementById('refresh').onclick=render;
+keyEl.onchange=fillOptions;modeEl.onchange=fillOptions;selects.forEach(s=>s.onchange=render);
+fillOptions();
+</script>
+</body>
+</html>
